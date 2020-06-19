@@ -41,8 +41,8 @@ class MainActivity : AppCompatActivity() , OnMapReadyCallback  ,
         }
         mapView.onCreate(savedInstanceState)
         mapView.getMapAsync(this)
-        fromBtn.setOnClickListener(this)
-        toBtn.setOnClickListener(this)
+        OriginBtn.setOnClickListener(this)
+        DestinationBtn.setOnClickListener(this)
     }
 
     override fun onMapReady(p0: HuaweiMap?) {
@@ -57,38 +57,49 @@ class MainActivity : AppCompatActivity() , OnMapReadyCallback  ,
         var latlon = LatLng(map.cameraPosition.target.latitude,map.cameraPosition.target.longitude)
 
         when(v?.id){
-            fromBtn.id ->{
-                Log.i("Firas Marker" ,"From")
-                if(markers.keys.contains("from"))
-                    markers["from"]?.remove()
+            OriginBtn.id ->{
 
+            //check if we have Origin maker already pinned if true remove the pin from the map
+               if(markers.keys.contains("Origin"))
+                    markers["Origin"]?.remove()
+
+            //check if we have already planned route if ture remove it
                 if(polyline != null){
                     polyline?.remove()
                 }
 
-                val marker  = map.addMarker(MarkerOptions().position(latlon).title("From").icon(BitmapDescriptorFactory.fromResource(R.drawable.iconfrom)))
-                markers["from"] = marker
-                toBtn.setClickable(true);
+            //make new MarkerOptions and add the marker to the map
+                val marker  = map.addMarker(MarkerOptions().position(latlon).title("Origin").icon(BitmapDescriptorFactory.fromResource(R.drawable.icon_origin)))
+                
+            //Add the marker as Origin Marker
+                markers["Origin"] = marker
 
-                if(markers.containsKey("to")){
+            //Enable the Destination button
+                DestinationBtn.setClickable(true);
+
+            //if we have Destination already Get the new Route
+                if(markers.containsKey("Destination")){
                     GetRoute();
                 }
-                Log.i(Tag,"${latlon.latitude},${latlon.longitude}");
             }
-            toBtn.id -> {
 
-                if(markers.keys.contains("to"))
-                    markers["to"]?.remove()
+            DestinationBtn.id -> {
+            //check if we have Destination maker already pinned if true remove the pin from the map
+                if(markers.keys.contains("Destination"))
+                    markers["Destination"]?.remove()
 
+            //check if we have already planned route if ture remove it
                 if(polyline != null){
                     polyline?.remove()
                 }
 
-                val marker =  map.addMarker(MarkerOptions().position(latlon).title("From").icon(BitmapDescriptorFactory.fromResource(R.drawable.icon_to)))
-                markers["to"] = marker
-
-                Log.i(Tag,"${latlon.latitude},${latlon.longitude}");
-
+            //make new MarkerOptions and add the marker to the map
+                val marker =  map.addMarker(MarkerOptions().position(latlon).title("Origin").icon(BitmapDescriptorFactory.fromResource(R.drawable.icon_destination)))
+        
+            //Add the marker as Destination Marker
+                markers["Destination"] = marker
+            
+            //Get the Route
                 GetRoute();
             }
         }
@@ -97,29 +108,34 @@ class MainActivity : AppCompatActivity() , OnMapReadyCallback  ,
 
     fun GetRoute(){
 
-        if(markers.containsKey("from") && markers.containsKey("to")) {
+        //Check if we have Origin and Destination points if true we can make the request if false show the user some Alert
+        if(markers.containsKey("Origin") && markers.containsKey("Destination")) {
 
             Thread {
+
                 val okHttpClient = OkHttpClient()
+
+                //Huawei driving Direction API URL
                 val url =
                     "https://mapapi.cloud.huawei.com/mapApi/v1/routeService/driving?key=${getString(R.string.api_key)}";
-                url
-
-                var root = JSONObject().putOpt(
+                
+                //Build you Request JSON Body as we did in postman
+                var RequestJsonBody = JSONObject().putOpt(
                     "origin", JSONObject()
-                        .put("lat", markers["from"]?.position?.latitude)
-                        .put("lng", markers["from"]?.position?.longitude)
-                )
+                        .put("lat", markers["Origin"]?.position?.latitude)
+                        .put("lng", markers["Origin"]?.position?.longitude)
+                    )
                     .putOpt(
                         "destination", JSONObject()
-                            .put("lat", markers["to"]?.position?.latitude)
-                            .put("lng", markers["to"]?.position?.longitude)
+                            .put("lat", markers["Destination"]?.position?.latitude)
+                            .put("lng", markers["Destination"]?.position?.longitude)
                     )
 
-
+                //Set the request body 
                 val requestBody: RequestBody =
-                    RequestBody.create("application/json".toMediaTypeOrNull(), root.toString());
+                    RequestBody.create("application/json".toMediaTypeOrNull(), RequestJsonBody.toString());
 
+                //Make new Request and add the headers as we did in postman and attach the requestBody
                 val request: Request = Request.Builder()
                     .url(url)
                     .header("Content-Type", "application/json")
@@ -127,18 +143,21 @@ class MainActivity : AppCompatActivity() , OnMapReadyCallback  ,
                     .post(requestBody)
                     .build()
 
-
+                //Call the Request and handle the onFailure and onResponse 
                 okHttpClient.newCall(request).enqueue(object : Callback {
+
                     override fun onFailure(call: Call, e: IOException) {
                         e.printStackTrace();
                     }
 
                     override fun onResponse(call: Call, response: Response) {
-                        val jsonObject = JSONObject(response.body?.string())
 
-                        val routes = jsonObject.optJSONArray("routes")
+                    //get the response body and convert it into string
+                        val requestJsonObject = JSONObject(response.body?.string())
+                    //get the "routes" JSON Array
+                        val routes = requestJsonObject.optJSONArray("routes")
 
-
+                    //if routes array is empty alert the uesrand the quit the function
                         if (null == routes || routes.length() == 0) {
                             runOnUiThread {
                                 Toast.makeText(
@@ -149,32 +168,47 @@ class MainActivity : AppCompatActivity() , OnMapReadyCallback  ,
                             }
                             return
                         }
-
+                        
+                        //get the index 0 JSON object of the "routes" JOSN Array
                         val route = routes.getJSONObject(0)
 
+                        //get the "paths" JOSN Array
                         val paths = route.optJSONArray("paths")
 
+                        //Read the "distanceText" value of the index 0 of "paths" JSON Array Oject
                         distanceText.text ="distance : ${paths.getJSONObject(0).optString("distanceText").toString()}"
 
+                        //new List That will contain our directions
                         var pathsList = arrayListOf<MutableList<LatLng>>()
 
+                        //iteriate on the paths array
                         for (i in 0 until paths.length()) {
 
+                            //list that will contain the each path steps                            
                             val stepPathList: MutableList<LatLng> = ArrayList()
+                            
+                            //get the path Object
                             val path = paths.getJSONObject(i)
+
+                            //Read the Steps JSON Array
                             val steps = path.optJSONArray("steps")
 
+                            //iterate on the path's steps
                             for (j in 0 until steps.length()) {
 
                                 val step = steps.getJSONObject(j)
-                                val pipelines = step.optJSONArray("polyline")
-
-                                for (k in 0 until pipelines.length()) {
+                                //Read the "polyline" JSON array 
+                                val polylines = step.optJSONArray("polyline")
+                                
+                                //iterate on the Steps's "polyline"
+                                for (k in 0 until polylines.length()) {
+                                    
+                                    //the first polyline will be the last polyline so we skip it
                                     if (j > 0 && k == 0) {
                                         continue
                                     }
 
-                                    val line = pipelines.getJSONObject(k)
+                                    val line = polylines.getJSONObject(k)
                                     val lat = line.optDouble("lat")
                                     val lng = line.optDouble("lng")
                                     val latLng = LatLng(lat, lng)
@@ -195,21 +229,30 @@ class MainActivity : AppCompatActivity() , OnMapReadyCallback  ,
         }
     }
 
-    fun drawMyRoute(arg_paths: List<List<LatLng?>>?) {
-        if (arg_paths == null || arg_paths.isEmpty() && arg_paths[0].isEmpty()) {
+    fun drawMyRoute(DirectionPaths: List<List<LatLng?>>?) {
+
+        //check if we do not have any paths
+        if (DirectionPaths == null || DirectionPaths.isEmpty() && DirectionPaths[0].isEmpty()) {
             Toast.makeText(applicationContext,"Sorry Try Again",Toast.LENGTH_SHORT).show();
             return
         }
-        for (i in arg_paths.indices) {
 
-            val insidePath = arg_paths[i]
-
+        //iterate on each paths direction polylines
+        for (i in DirectionPaths.indices) {
+            
+            //get the direction 
+            val insidePath = DirectionPaths[i]
+            
+            //setup the color and the width of ployline
             val options = PolylineOptions()
                 .color(Color.BLUE).width(2f)
-
+            
+            //iterate on the directions points
             for (latLng in insidePath) {
                 options.add(latLng)
             }
+
+            //Add the polylines on the Map as ploylines 
             polyline = map.addPolyline(options)
         }
     }
